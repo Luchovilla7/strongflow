@@ -204,6 +204,8 @@ const TrainingView: React.FC<{ onSave: (log: Omit<TrainingLog, 'id' | 'created_a
               <option>Hip Thrust</option>
               <option>Peso Muerto</option>
               <option>Zancadas</option>
+              <option>Subidón al cajón</option>
+              <option>Patada de glúteo</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">

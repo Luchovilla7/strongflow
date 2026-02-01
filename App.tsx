@@ -2,13 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { 
   LayoutDashboard, Dumbbell, Apple, Settings, Zap, TrendingUp,
-  Award, Heart, Sparkles, Flower2, Star, Ruler, Gem, Trophy,
-  ChevronRight, LogOut, Mail, Lock, Plus, Save
+  Sparkles, Flower2, Ruler, Gem, LogOut, Mail, Lock, Save, User, Target, Weight
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN SUPABASE ---
@@ -106,7 +104,27 @@ const LoginView: React.FC = () => {
 };
 
 // --- Dashboard Component ---
-const Dashboard: React.FC<{ profile: Profile | null, logs: TrainingLog[], measurements: Measurement[] }> = ({ profile, logs, measurements }) => {
+const Dashboard: React.FC<{ 
+  profile: Profile | null, 
+  logs: TrainingLog[], 
+  measurements: Measurement[],
+  isEditing: boolean,
+  setIsEditing: (val: boolean) => void,
+  onUpdateProfile: (data: Partial<Profile>) => void
+}> = ({ profile, logs, measurements, isEditing, setIsEditing, onUpdateProfile }) => {
+  const [editName, setEditName] = useState(profile?.username || '');
+  const [editCurrentWeight, setEditCurrentWeight] = useState(profile?.current_weight?.toString() || '');
+  const [editTargetWeight, setEditTargetWeight] = useState(profile?.target_weight?.toString() || '');
+
+  // Actualizar estados locales cuando el perfil cambie (ej. al cargar)
+  useEffect(() => {
+    if (profile) {
+      setEditName(profile.username);
+      setEditCurrentWeight(profile.current_weight.toString());
+      setEditTargetWeight(profile.target_weight.toString());
+    }
+  }, [profile]);
+
   const chartData = [...logs].reverse().map(l => ({
     date: new Date(l.created_at).toLocaleDateString('es-ES', { weekday: 'short' }),
     weight: l.weight
@@ -115,24 +133,80 @@ const Dashboard: React.FC<{ profile: Profile | null, logs: TrainingLog[], measur
   const lastSquat = logs.find(l => l.exercise_name.toLowerCase().includes('sentadilla'))?.weight || 0;
   const lastGlute = measurements[0]?.gluteos || 0;
 
+  const handleSaveProfile = () => {
+    onUpdateProfile({
+      username: editName,
+      current_weight: parseFloat(editCurrentWeight),
+      target_weight: parseFloat(editTargetWeight)
+    });
+    setIsEditing(false);
+  };
+
+  // Cálculo de progreso para la barra
+  const progress = profile && profile.target_weight > 0 
+    ? Math.min((profile.current_weight / profile.target_weight) * 100, 100)
+    : 0;
+
   return (
     <div className="space-y-6 animate-in pb-24">
+      {/* Saludo y Frase Motívadora */}
       <div className="bg-gradient-to-r from-pink-100/50 to-rose-100/50 p-6 rounded-[2.5rem] border border-pink-200 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-pink-600 flex items-center gap-2">
-            ¡Hola, {profile?.username || 'Imparable'}! <Sparkles className="w-6 h-6 animate-pulse" />
+            ¡Hola, {profile?.username || 'Guerriera'}! <Sparkles className="w-6 h-6 animate-pulse" />
           </h2>
           <p className="text-pink-500/80 text-sm italic font-medium">"Tu única competencia eres tu versión de ayer"</p>
         </div>
-        <Flower2 className="text-pink-400 w-10 h-10 opacity-50" />
+        <Flower2 className="text-pink-400 w-10 h-10 opacity-30" />
       </div>
+
+      {/* Panel de Edición de Perfil */}
+      {isEditing && (
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-pink-100 animate-in space-y-4">
+          <h3 className="text-center font-black text-pink-500 uppercase tracking-widest text-sm mb-4">Ajustes de Perfil</h3>
+          <div className="space-y-4">
+            <div className="relative">
+              <User className="absolute left-4 top-4 text-pink-300" size={18} />
+              <input 
+                type="text" placeholder="Nombre" 
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl font-bold"
+                value={editName} onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="relative">
+                <Weight className="absolute left-4 top-4 text-pink-300" size={18} />
+                <input 
+                  type="number" placeholder="Peso Actual" 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl font-bold"
+                  value={editCurrentWeight} onChange={(e) => setEditCurrentWeight(e.target.value)}
+                />
+              </div>
+              <div className="relative">
+                <Target className="absolute left-4 top-4 text-pink-300" size={18} />
+                <input 
+                  type="number" placeholder="Peso Objetivo" 
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl font-bold"
+                  value={editTargetWeight} onChange={(e) => setEditTargetWeight(e.target.value)}
+                />
+              </div>
+            </div>
+            <button 
+              onClick={handleSaveProfile}
+              className="w-full bg-pink-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all"
+            >
+              Guardar Perfil ✨
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-pink-50">
           <span className="text-pink-400 text-[10px] font-black uppercase tracking-widest mb-2 block">Peso Actual</span>
           <div className="text-3xl font-black text-slate-700">{profile?.current_weight || 0} kg</div>
           <div className="mt-2 h-1.5 w-full bg-pink-50 rounded-full overflow-hidden">
-             <div className="h-full bg-pink-400 transition-all duration-700" style={{width: `${Math.min(((profile?.current_weight || 0)/(profile?.target_weight || 1))*100, 100)}%`}}></div>
+             <div className="h-full bg-pink-400 transition-all duration-700" style={{width: `${progress}%`}}></div>
           </div>
           <div className="text-[9px] text-pink-400 mt-2 font-bold uppercase tracking-wider">Objetivo: {profile?.target_weight || 0}kg</div>
         </div>
@@ -178,12 +252,11 @@ const TrainingView: React.FC<{ onSave: (log: Omit<TrainingLog, 'id' | 'created_a
   const [exercise, setExercise] = useState('Sentadilla');
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
-  const [feeling, setFeeling] = useState('Buena');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!weight || !reps) return;
-    onSave({ exercise_name: exercise, weight: parseFloat(weight), reps: parseInt(reps), feeling });
+    onSave({ exercise_name: exercise, weight: parseFloat(weight), reps: parseInt(reps), feeling: 'Buena' });
     setWeight('');
     setReps('');
     alert("¡Entrenamiento guardado con éxito! ✨");
@@ -281,6 +354,7 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<TrainingLog[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'training' | 'measurements' | 'nutrition'>('dashboard');
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -321,6 +395,13 @@ const App: React.FC = () => {
     if (data) setMeasurements(data);
   };
 
+  const handleUpdateProfile = async (data: Partial<Profile>) => {
+    if (!session) return;
+    const { error } = await supabase.from('profiles').update(data).eq('id', session.user.id);
+    if (!error) fetchProfile(session.user.id);
+    else alert(error.message);
+  };
+
   const saveLog = async (logData: Omit<TrainingLog, 'id' | 'created_at'>) => {
     if (!session) return;
     const { error } = await supabase.from('training_logs').insert([{ ...logData, user_id: session.user.id }]);
@@ -338,6 +419,15 @@ const App: React.FC = () => {
     setSession(null);
   };
 
+  const toggleSettings = () => {
+    if (activeTab !== 'dashboard') {
+      setActiveTab('dashboard');
+      setIsEditingProfile(true);
+    } else {
+      setIsEditingProfile(!isEditingProfile);
+    }
+  };
+
   if (!session) return <LoginView />;
 
   return (
@@ -350,6 +440,12 @@ const App: React.FC = () => {
           <h1 className="text-xl font-black text-slate-800 tracking-tighter">StrongFlow</h1>
         </div>
         <div className="flex gap-2">
+          <button 
+            onClick={toggleSettings} 
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isEditingProfile && activeTab === 'dashboard' ? 'bg-pink-500 text-white shadow-lg shadow-pink-200' : 'bg-pink-50 border border-pink-100 text-pink-400 shadow-sm'}`}
+          >
+            <Settings size={20} className={isEditingProfile && activeTab === 'dashboard' ? 'animate-spin' : ''} />
+          </button>
           <button onClick={handleSignOut} className="w-10 h-10 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-400 shadow-sm">
             <LogOut size={20} />
           </button>
@@ -357,7 +453,16 @@ const App: React.FC = () => {
       </header>
 
       <main>
-        {activeTab === 'dashboard' && <Dashboard profile={profile} logs={logs} measurements={measurements} />}
+        {activeTab === 'dashboard' && (
+          <Dashboard 
+            profile={profile} 
+            logs={logs} 
+            measurements={measurements} 
+            isEditing={isEditingProfile}
+            setIsEditing={setIsEditingProfile}
+            onUpdateProfile={handleUpdateProfile}
+          />
+        )}
         {activeTab === 'training' && <TrainingView onSave={saveLog} />}
         {activeTab === 'measurements' && <MeasurementsView onSave={saveMeasurement} />}
         {activeTab === 'nutrition' && (
@@ -378,7 +483,10 @@ const App: React.FC = () => {
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => {
+              setActiveTab(tab.id as any);
+              if (tab.id !== 'dashboard') setIsEditingProfile(false);
+            }}
             className={`flex flex-col items-center gap-1 transition-all duration-300 px-4 py-2 rounded-3xl ${
               activeTab === tab.id ? 'bg-pink-50 text-pink-600 scale-110' : 'text-slate-400'
             }`}

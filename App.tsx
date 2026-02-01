@@ -5,8 +5,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { 
-  LayoutDashboard, Dumbbell, Apple, Settings, Zap, TrendingUp,
-  Sparkles, Flower2, Ruler, Gem, LogOut, Mail, Lock, Save, User, Target, Weight
+  LayoutDashboard, Dumbbell, Apple, Settings, TrendingUp,
+  Sparkles, Flower2, Ruler, Gem, LogOut, Mail, Lock, Save, User, Target, Weight, Loader2
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN SUPABASE ---
@@ -110,20 +110,21 @@ const Dashboard: React.FC<{
   measurements: Measurement[],
   isEditing: boolean,
   setIsEditing: (val: boolean) => void,
-  onUpdateProfile: (data: Partial<Profile>) => void
+  onUpdateProfile: (data: Partial<Profile>) => Promise<void>
 }> = ({ profile, logs, measurements, isEditing, setIsEditing, onUpdateProfile }) => {
   const [editName, setEditName] = useState('');
   const [editCurrentWeight, setEditCurrentWeight] = useState('');
   const [editTargetWeight, setEditTargetWeight] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Sincronizar estados de edición cuando el perfil cambie o se abra el panel
+  // Sincronización robusta: SOLO actualizamos si no estamos editando activamente
   useEffect(() => {
-    if (profile) {
+    if (profile && !isSaving) {
       setEditName(profile.username || '');
       setEditCurrentWeight(profile.current_weight?.toString() || '0');
       setEditTargetWeight(profile.target_weight?.toString() || '0');
     }
-  }, [profile, isEditing]);
+  }, [profile, isSaving]);
 
   const chartData = [...logs].reverse().map(l => ({
     date: new Date(l.created_at).toLocaleDateString('es-ES', { weekday: 'short' }),
@@ -133,22 +134,24 @@ const Dashboard: React.FC<{
   const lastSquat = logs.find(l => l.exercise_name.toLowerCase().includes('sentadilla'))?.weight || 0;
   const lastGlute = measurements[0]?.gluteos || 0;
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
     const current = parseFloat(editCurrentWeight);
     const target = parseFloat(editTargetWeight);
     
-    onUpdateProfile({
+    await onUpdateProfile({
       username: editName,
-      current_weight: isNaN(current) ? profile?.current_weight : current,
-      target_weight: isNaN(target) ? profile?.target_weight : target
+      current_weight: isNaN(current) ? (profile?.current_weight || 0) : current,
+      target_weight: isNaN(target) ? (profile?.target_weight || 0) : target
     });
+    
+    setIsSaving(false);
     setIsEditing(false);
   };
 
-  // Cálculo de progreso para la barra
   const weightVal = profile?.current_weight || 0;
-  const targetVal = profile?.target_weight || 1; // Evitar división por cero
-  const progress = Math.min((weightVal / targetVal) * 100, 100);
+  const targetVal = profile?.target_weight || 0;
+  const progress = targetVal > 0 ? Math.min((weightVal / targetVal) * 100, 100) : 0;
 
   return (
     <div className="space-y-6 animate-in pb-24">
@@ -194,9 +197,11 @@ const Dashboard: React.FC<{
             </div>
             <button 
               onClick={handleSaveProfile}
-              className="w-full bg-pink-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all flex items-center justify-center gap-2"
+              disabled={isSaving}
+              className="w-full bg-pink-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <Save size={18} /> Guardar Perfil ✨
+              {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+              {isSaving ? 'Guardando...' : 'Guardar Perfil ✨'}
             </button>
           </div>
         </div>
@@ -384,8 +389,8 @@ const App: React.FC = () => {
     if (data) {
       setProfile(data);
     } else {
-      // Si no existe, creamos uno base
-      const { data: newP } = await supabase.from('profiles').insert([{ 
+      // Si el error es que no existe el registro, creamos uno base
+      const { data: newP } = await supabase.from('profiles').upsert([{ 
         id: userId, 
         username: 'Guerriera', 
         current_weight: 60, 
@@ -407,13 +412,21 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (data: Partial<Profile>) => {
     if (!session) return;
-    const { error } = await supabase.from('profiles').update(data).eq('id', session.user.id);
+    
+    // UPSERT para garantizar guardado (asegurar campos numéricos reales)
+    const { error } = await supabase.from('profiles').upsert({
+      id: session.user.id,
+      username: data.username,
+      current_weight: data.current_weight,
+      target_weight: data.target_weight
+    });
+
     if (!error) {
       await fetchProfile(session.user.id);
       alert("¡Perfil guardado correctamente! ✨");
     } else {
-      console.error("Error al actualizar:", error);
-      alert("Error: " + error.message + ". Verifica que las columnas existan en Supabase.");
+      console.error("Error detallado Supabase:", error);
+      alert(`Error al guardar: ${error.message}.`);
     }
   };
 
@@ -437,7 +450,7 @@ const App: React.FC = () => {
   const toggleSettings = () => {
     if (activeTab !== 'dashboard') {
       setActiveTab('dashboard');
-      setTimeout(() => setIsEditingProfile(true), 100);
+      setTimeout(() => setIsEditingProfile(true), 150);
     } else {
       setIsEditingProfile(!isEditingProfile);
     }

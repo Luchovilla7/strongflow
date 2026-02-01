@@ -112,18 +112,18 @@ const Dashboard: React.FC<{
   setIsEditing: (val: boolean) => void,
   onUpdateProfile: (data: Partial<Profile>) => void
 }> = ({ profile, logs, measurements, isEditing, setIsEditing, onUpdateProfile }) => {
-  const [editName, setEditName] = useState(profile?.username || '');
-  const [editCurrentWeight, setEditCurrentWeight] = useState(profile?.current_weight?.toString() || '');
-  const [editTargetWeight, setEditTargetWeight] = useState(profile?.target_weight?.toString() || '');
+  const [editName, setEditName] = useState('');
+  const [editCurrentWeight, setEditCurrentWeight] = useState('');
+  const [editTargetWeight, setEditTargetWeight] = useState('');
 
-  // Actualizar estados locales cuando el perfil cambie (ej. al cargar)
+  // Sincronizar estados de edición cuando el perfil cambie o se abra el panel
   useEffect(() => {
     if (profile) {
-      setEditName(profile.username);
-      setEditCurrentWeight(profile.current_weight.toString());
-      setEditTargetWeight(profile.target_weight.toString());
+      setEditName(profile.username || '');
+      setEditCurrentWeight(profile.current_weight?.toString() || '0');
+      setEditTargetWeight(profile.target_weight?.toString() || '0');
     }
-  }, [profile]);
+  }, [profile, isEditing]);
 
   const chartData = [...logs].reverse().map(l => ({
     date: new Date(l.created_at).toLocaleDateString('es-ES', { weekday: 'short' }),
@@ -134,22 +134,24 @@ const Dashboard: React.FC<{
   const lastGlute = measurements[0]?.gluteos || 0;
 
   const handleSaveProfile = () => {
+    const current = parseFloat(editCurrentWeight);
+    const target = parseFloat(editTargetWeight);
+    
     onUpdateProfile({
       username: editName,
-      current_weight: parseFloat(editCurrentWeight),
-      target_weight: parseFloat(editTargetWeight)
+      current_weight: isNaN(current) ? profile?.current_weight : current,
+      target_weight: isNaN(target) ? profile?.target_weight : target
     });
     setIsEditing(false);
   };
 
   // Cálculo de progreso para la barra
-  const progress = profile && profile.target_weight > 0 
-    ? Math.min((profile.current_weight / profile.target_weight) * 100, 100)
-    : 0;
+  const weightVal = profile?.current_weight || 0;
+  const targetVal = profile?.target_weight || 1; // Evitar división por cero
+  const progress = Math.min((weightVal / targetVal) * 100, 100);
 
   return (
     <div className="space-y-6 animate-in pb-24">
-      {/* Saludo y Frase Motívadora */}
       <div className="bg-gradient-to-r from-pink-100/50 to-rose-100/50 p-6 rounded-[2.5rem] border border-pink-200 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-pink-600 flex items-center gap-2">
@@ -160,7 +162,6 @@ const Dashboard: React.FC<{
         <Flower2 className="text-pink-400 w-10 h-10 opacity-30" />
       </div>
 
-      {/* Panel de Edición de Perfil */}
       {isEditing && (
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-pink-100 animate-in space-y-4">
           <h3 className="text-center font-black text-pink-500 uppercase tracking-widest text-sm mb-4">Ajustes de Perfil</h3>
@@ -177,7 +178,7 @@ const Dashboard: React.FC<{
               <div className="relative">
                 <Weight className="absolute left-4 top-4 text-pink-300" size={18} />
                 <input 
-                  type="number" placeholder="Peso Actual" 
+                  type="number" step="0.1" placeholder="Peso Actual" 
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl font-bold"
                   value={editCurrentWeight} onChange={(e) => setEditCurrentWeight(e.target.value)}
                 />
@@ -185,7 +186,7 @@ const Dashboard: React.FC<{
               <div className="relative">
                 <Target className="absolute left-4 top-4 text-pink-300" size={18} />
                 <input 
-                  type="number" placeholder="Peso Objetivo" 
+                  type="number" step="0.1" placeholder="Peso Objetivo" 
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl font-bold"
                   value={editTargetWeight} onChange={(e) => setEditTargetWeight(e.target.value)}
                 />
@@ -193,9 +194,9 @@ const Dashboard: React.FC<{
             </div>
             <button 
               onClick={handleSaveProfile}
-              className="w-full bg-pink-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all"
+              className="w-full bg-pink-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-pink-600 transition-all flex items-center justify-center gap-2"
             >
-              Guardar Perfil ✨
+              <Save size={18} /> Guardar Perfil ✨
             </button>
           </div>
         </div>
@@ -208,7 +209,7 @@ const Dashboard: React.FC<{
           <div className="mt-2 h-1.5 w-full bg-pink-50 rounded-full overflow-hidden">
              <div className="h-full bg-pink-400 transition-all duration-700" style={{width: `${progress}%`}}></div>
           </div>
-          <div className="text-[9px] text-pink-400 mt-2 font-bold uppercase tracking-wider">Objetivo: {profile?.target_weight || 0}kg</div>
+          <div className="text-[9px] text-pink-400 mt-2 font-bold uppercase tracking-wider">Objetivo: {profile?.target_weight || 0} kg</div>
         </div>
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-pink-50">
           <span className="text-pink-400 text-[10px] font-black uppercase tracking-widest mb-2 block">Última Sentadilla</span>
@@ -371,17 +372,26 @@ const App: React.FC = () => {
   }, []);
 
   const refreshAllData = async (userId: string) => {
-    fetchProfile(userId);
-    fetchLogs(userId);
-    fetchMeasurements(userId);
+    await Promise.all([
+      fetchProfile(userId),
+      fetchLogs(userId),
+      fetchMeasurements(userId)
+    ]);
   };
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setProfile(data);
-    else {
-      const { data: newP } = await supabase.from('profiles').insert([{ id: userId, username: 'Guerriera', current_weight: 60, target_weight: 65 }]).select().single();
-      setProfile(newP);
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) {
+      setProfile(data);
+    } else {
+      // Si no existe, creamos uno base
+      const { data: newP } = await supabase.from('profiles').insert([{ 
+        id: userId, 
+        username: 'Guerriera', 
+        current_weight: 60, 
+        target_weight: 65 
+      }]).select().single();
+      if (newP) setProfile(newP);
     }
   };
 
@@ -398,8 +408,13 @@ const App: React.FC = () => {
   const handleUpdateProfile = async (data: Partial<Profile>) => {
     if (!session) return;
     const { error } = await supabase.from('profiles').update(data).eq('id', session.user.id);
-    if (!error) fetchProfile(session.user.id);
-    else alert(error.message);
+    if (!error) {
+      await fetchProfile(session.user.id);
+      alert("¡Perfil guardado correctamente! ✨");
+    } else {
+      console.error("Error al actualizar:", error);
+      alert("Error: " + error.message + ". Verifica que las columnas existan en Supabase.");
+    }
   };
 
   const saveLog = async (logData: Omit<TrainingLog, 'id' | 'created_at'>) => {
@@ -422,7 +437,7 @@ const App: React.FC = () => {
   const toggleSettings = () => {
     if (activeTab !== 'dashboard') {
       setActiveTab('dashboard');
-      setIsEditingProfile(true);
+      setTimeout(() => setIsEditingProfile(true), 100);
     } else {
       setIsEditingProfile(!isEditingProfile);
     }

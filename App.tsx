@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   LayoutDashboard, Dumbbell, Apple, Settings, TrendingUp,
-  Sparkles, Flower2, Ruler, Gem, LogOut, Mail, Lock, Save, User, Target, Weight, Loader2
+  Sparkles, Flower2, Ruler, Gem, LogOut, Mail, Lock, Save, User, Target, Weight, Loader2, History, Calendar
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN SUPABASE ---
@@ -20,6 +20,12 @@ interface Profile {
   username: string;
   current_weight: number;
   target_weight: number;
+}
+
+interface WeightLog {
+  id: string;
+  weight: number;
+  created_at: string;
 }
 
 interface TrainingLog {
@@ -107,17 +113,17 @@ const LoginView: React.FC = () => {
 const Dashboard: React.FC<{ 
   profile: Profile | null, 
   logs: TrainingLog[], 
+  weightHistory: WeightLog[],
   measurements: Measurement[],
   isEditing: boolean,
   setIsEditing: (val: boolean) => void,
   onUpdateProfile: (data: Partial<Profile>) => Promise<void>
-}> = ({ profile, logs, measurements, isEditing, setIsEditing, onUpdateProfile }) => {
+}> = ({ profile, logs, weightHistory, measurements, isEditing, setIsEditing, onUpdateProfile }) => {
   const [editName, setEditName] = useState('');
   const [editCurrentWeight, setEditCurrentWeight] = useState('');
   const [editTargetWeight, setEditTargetWeight] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Sincronización robusta: SOLO actualizamos si no estamos editando activamente
   useEffect(() => {
     if (profile && !isSaving) {
       setEditName(profile.username || '');
@@ -126,10 +132,11 @@ const Dashboard: React.FC<{
     }
   }, [profile, isSaving]);
 
-  const chartData = [...logs].reverse().map(l => ({
-    date: new Date(l.created_at).toLocaleDateString('es-ES', { weekday: 'short' }),
+  // Datos para el gráfico basados en el historial de peso REAL
+  const chartData = [...weightHistory].reverse().map(l => ({
+    date: new Date(l.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
     weight: l.weight
-  })).slice(-7);
+  })).slice(-10);
 
   const lastSquat = logs.find(l => l.exercise_name.toLowerCase().includes('sentadilla'))?.weight || 0;
   const lastGlute = measurements[0]?.gluteos || 0;
@@ -151,10 +158,12 @@ const Dashboard: React.FC<{
 
   const weightVal = profile?.current_weight || 0;
   const targetVal = profile?.target_weight || 0;
+  // Cálculo de progreso (si el peso actual es mayor que el objetivo, se asume que se quiere bajar o subir según contexto, pero aquí simplificamos)
   const progress = targetVal > 0 ? Math.min((weightVal / targetVal) * 100, 100) : 0;
 
   return (
     <div className="space-y-6 animate-in pb-24">
+      {/* Header Bienvenida */}
       <div className="bg-gradient-to-r from-pink-100/50 to-rose-100/50 p-6 rounded-[2.5rem] border border-pink-200 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-pink-600 flex items-center gap-2">
@@ -165,6 +174,7 @@ const Dashboard: React.FC<{
         <Flower2 className="text-pink-400 w-10 h-10 opacity-30" />
       </div>
 
+      {/* Formulario Edición Perfil */}
       {isEditing && (
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-pink-100 animate-in space-y-4">
           <h3 className="text-center font-black text-pink-500 uppercase tracking-widest text-sm mb-4">Ajustes de Perfil</h3>
@@ -207,6 +217,7 @@ const Dashboard: React.FC<{
         </div>
       )}
 
+      {/* Stats Principales */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-pink-50">
           <span className="text-pink-400 text-[10px] font-black uppercase tracking-widest mb-2 block">Peso Actual</span>
@@ -228,9 +239,10 @@ const Dashboard: React.FC<{
         </div>
       </div>
 
+      {/* Gráfico de Evolución de Peso */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-pink-50">
         <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2 uppercase tracking-widest">
-          <TrendingUp className="w-4 h-4 text-pink-500" /> Historial de Cargas
+          <TrendingUp className="w-4 h-4 text-pink-500" /> Evolución de Peso
         </h3>
         <div className="h-48 w-full">
           {chartData.length > 0 ? (
@@ -238,14 +250,49 @@ const Dashboard: React.FC<{
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#fff1f2" />
                 <XAxis dataKey="date" hide />
-                <Tooltip />
-                <Line type="monotone" dataKey="weight" stroke="#f472b6" strokeWidth={4} dot={{ fill: '#f472b6' }} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                />
+                <Line type="monotone" dataKey="weight" stroke="#f472b6" strokeWidth={4} dot={{ fill: '#f472b6', r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-slate-300 text-xs font-bold uppercase italic">
-              Sin datos registrados aún... ¡A darle! 🔥
+            <div className="h-full flex items-center justify-center text-slate-300 text-xs font-bold uppercase italic text-center">
+              Sin historial de peso... <br/> ¡Actualiza tu perfil para empezar! 🌸
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Historial Detallado de Registros */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-pink-50">
+        <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2 uppercase tracking-widest">
+          <History className="w-4 h-4 text-pink-500" /> Historial de Registros
+        </h3>
+        <div className="space-y-3 max-h-60 overflow-y-auto pr-2 scrollbar-hide">
+          {weightHistory.length > 0 ? (
+            weightHistory.map((log) => (
+              <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-100 hover:border-pink-200 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-pink-100 flex items-center justify-center text-pink-500">
+                    <Calendar size={18} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-slate-700">{log.weight} kg</div>
+                    <div className="text-[10px] text-slate-400 font-bold">
+                      {new Date(log.created_at).toLocaleDateString('es-ES', { 
+                        day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' 
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[10px] bg-white border border-slate-100 text-slate-400 px-3 py-1 rounded-full font-black uppercase tracking-tighter shadow-sm">
+                  Registrado
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-center text-slate-300 text-xs py-4 font-bold italic uppercase">No hay registros anteriores.</p>
           )}
         </div>
       </div>
@@ -357,6 +404,7 @@ const MeasurementsView: React.FC<{ onSave: (m: { gluteos: number, muslos: number
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [weightHistory, setWeightHistory] = useState<WeightLog[]>([]);
   const [logs, setLogs] = useState<TrainingLog[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'training' | 'measurements' | 'nutrition'>('dashboard');
@@ -379,25 +427,34 @@ const App: React.FC = () => {
   const refreshAllData = async (userId: string) => {
     await Promise.all([
       fetchProfile(userId),
+      fetchWeightHistory(userId),
       fetchLogs(userId),
       fetchMeasurements(userId)
     ]);
   };
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
       setProfile(data);
     } else {
-      // Si el error es que no existe el registro, creamos uno base
       const { data: newP } = await supabase.from('profiles').upsert([{ 
         id: userId, 
         username: 'Guerriera', 
-        current_weight: 60, 
-        target_weight: 65 
+        current_weight: 0, 
+        target_weight: 0 
       }]).select().single();
       if (newP) setProfile(newP);
     }
+  };
+
+  const fetchWeightHistory = async (userId: string) => {
+    const { data } = await supabase
+      .from('weight_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (data) setWeightHistory(data);
   };
 
   const fetchLogs = async (userId: string) => {
@@ -413,20 +470,28 @@ const App: React.FC = () => {
   const handleUpdateProfile = async (data: Partial<Profile>) => {
     if (!session) return;
     
-    // UPSERT para garantizar guardado (asegurar campos numéricos reales)
-    const { error } = await supabase.from('profiles').upsert({
+    // 1. Guardar o actualizar en Profiles (Username y Meta)
+    const { error: profileError } = await supabase.from('profiles').upsert({
       id: session.user.id,
       username: data.username,
       current_weight: data.current_weight,
       target_weight: data.target_weight
     });
 
-    if (!error) {
-      await fetchProfile(session.user.id);
-      alert("¡Perfil guardado correctamente! ✨");
+    // 2. Si el peso ha sido registrado, añadirlo al historial de peso (weight_logs)
+    if (data.current_weight !== undefined) {
+      await supabase.from('weight_logs').insert([{
+        user_id: session.user.id,
+        weight: data.current_weight
+      }]);
+    }
+
+    if (!profileError) {
+      await refreshAllData(session.user.id);
+      alert("¡Datos actualizados con éxito! ✨");
     } else {
-      console.error("Error detallado Supabase:", error);
-      alert(`Error al guardar: ${error.message}.`);
+      console.error("Error Supabase:", profileError);
+      alert(`Error al guardar: ${profileError.message}.`);
     }
   };
 
@@ -485,6 +550,7 @@ const App: React.FC = () => {
           <Dashboard 
             profile={profile} 
             logs={logs} 
+            weightHistory={weightHistory}
             measurements={measurements} 
             isEditing={isEditingProfile}
             setIsEditing={setIsEditingProfile}

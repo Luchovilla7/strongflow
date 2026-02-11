@@ -132,7 +132,6 @@ const Dashboard: React.FC<{
     }
   }, [profile, isSaving]);
 
-  // Datos para el gráfico basados en el historial de peso REAL
   const chartData = [...weightHistory].reverse().map(l => ({
     date: new Date(l.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
     weight: l.weight
@@ -158,12 +157,10 @@ const Dashboard: React.FC<{
 
   const weightVal = profile?.current_weight || 0;
   const targetVal = profile?.target_weight || 0;
-  // Cálculo de progreso (si el peso actual es mayor que el objetivo, se asume que se quiere bajar o subir según contexto, pero aquí simplificamos)
   const progress = targetVal > 0 ? Math.min((weightVal / targetVal) * 100, 100) : 0;
 
   return (
     <div className="space-y-6 animate-in pb-24">
-      {/* Header Bienvenida */}
       <div className="bg-gradient-to-r from-pink-100/50 to-rose-100/50 p-6 rounded-[2.5rem] border border-pink-200 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-pink-600 flex items-center gap-2">
@@ -174,7 +171,6 @@ const Dashboard: React.FC<{
         <Flower2 className="text-pink-400 w-10 h-10 opacity-30" />
       </div>
 
-      {/* Formulario Edición Perfil */}
       {isEditing && (
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-2 border-pink-100 animate-in space-y-4">
           <h3 className="text-center font-black text-pink-500 uppercase tracking-widest text-sm mb-4">Ajustes de Perfil</h3>
@@ -217,7 +213,6 @@ const Dashboard: React.FC<{
         </div>
       )}
 
-      {/* Stats Principales */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-pink-50">
           <span className="text-pink-400 text-[10px] font-black uppercase tracking-widest mb-2 block">Peso Actual</span>
@@ -239,7 +234,6 @@ const Dashboard: React.FC<{
         </div>
       </div>
 
-      {/* Gráfico de Evolución de Peso */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-pink-50">
         <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2 uppercase tracking-widest">
           <TrendingUp className="w-4 h-4 text-pink-500" /> Evolución de Peso
@@ -264,7 +258,6 @@ const Dashboard: React.FC<{
         </div>
       </div>
 
-      {/* Historial Detallado de Registros */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-pink-50">
         <h3 className="text-sm font-black text-slate-800 mb-6 flex items-center gap-2 uppercase tracking-widest">
           <History className="w-4 h-4 text-pink-500" /> Historial de Registros
@@ -470,7 +463,7 @@ const App: React.FC = () => {
   const handleUpdateProfile = async (data: Partial<Profile>) => {
     if (!session) return;
     
-    // 1. Guardar o actualizar en Profiles (Username y Meta)
+    // 1. Guardar en Profiles (Username y Metas Actuales)
     const { error: profileError } = await supabase.from('profiles').upsert({
       id: session.user.id,
       username: data.username,
@@ -478,21 +471,28 @@ const App: React.FC = () => {
       target_weight: data.target_weight
     });
 
-    // 2. Si el peso ha sido registrado, añadirlo al historial de peso (weight_logs)
-    if (data.current_weight !== undefined) {
-      await supabase.from('weight_logs').insert([{
+    if (profileError) {
+      console.error("Error al actualizar perfil:", profileError);
+      alert(`Error de Perfil: ${profileError.message}`);
+      return;
+    }
+
+    // 2. Si el peso es válido, añadirlo OBLIGATORIAMENTE al historial
+    if (data.current_weight !== undefined && data.current_weight > 0) {
+      const { error: weightError } = await supabase.from('weight_logs').insert([{
         user_id: session.user.id,
         weight: data.current_weight
       }]);
+      
+      if (weightError) {
+        console.error("Error al guardar en weight_logs:", weightError);
+        alert(`Peso guardado en perfil pero falló el historial: ${weightError.message}. Revisa los permisos RLS de la tabla 'weight_logs'.`);
+      }
     }
 
-    if (!profileError) {
-      await refreshAllData(session.user.id);
-      alert("¡Datos actualizados con éxito! ✨");
-    } else {
-      console.error("Error Supabase:", profileError);
-      alert(`Error al guardar: ${profileError.message}.`);
-    }
+    // 3. RECARGAR TODO antes de avisar éxito para asegurar visualización
+    await refreshAllData(session.user.id);
+    alert("¡Datos e Historial actualizados con éxito! ✨");
   };
 
   const saveLog = async (logData: Omit<TrainingLog, 'id' | 'created_at'>) => {
